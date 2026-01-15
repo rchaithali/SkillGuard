@@ -1,0 +1,98 @@
+
+SkillGuard — Architecture & Design Notes (V1)
+
+1. Problem Statement
+
+SkillGuard is designed to reduce manual effort in referral-stage hiring by providing role readiness signals based on verified skills and evidence, rather than keyword-only ATS matching.
+
+The goal is to help hiring managers and engineers make faster, fairer, and explainable screening decisions without relying on opaque AI models.
+
+⸻
+
+2. V1 Scope (Locked)
+	•	Rule-based, heuristic-driven evaluation
+	•	Resume text as the primary input
+	•	Manual skill and DSA signal interpretation
+	•	In-memory processing only (no resume persistence)
+	•	Single-role evaluation per request
+	•	JSON-based explainable output
+
+⸻
+
+3. Evaluation Dimensions (High-Level)
+	•	Role Skills
+	•	Classified as: Mentioned / Used / Strong
+	•	Project Evidence
+	•	Depth, end-to-end ownership, backend vs frontend signals
+	•	Experience Relevance
+	•	Role alignment and practical exposure
+	•	Fundamentals (DSA)
+	•	Pattern-based indicators (DP, Graphs, Sliding Window, etc.)
+
+⸻
+
+4. Decision Thresholds (Conceptual)
+	•	≥ 80 → Ready for Interview
+	•	60–79 → Phone Screening
+	•	< 60 → Assessment / Alternate Role Suggestion
+
+⸻
+
+5. Data Sources (V1)
+	•	Resume text
+	•	Explicit skill mentions
+	•	Project descriptions
+	•	DSA pattern keywords
+
+⸻
+
+6. Non-Goals (Explicitly Excluded)
+	•	No live LeetCode or GitHub scraping
+	•	No ML or LLM-based scoring
+	•	No embeddings or vector databases
+	•	No long-term storage of candidate data
+
+⸻
+
+7. Privacy & Security Principles
+	•	Resume content processed in-memory only
+	•	No candidate data stored after evaluation
+	•	Stateless API design
+
+⸻
+
+8. Explainability Rules
+	•	Every score must have a reason
+	•	Output includes breakdown by dimension
+	•	No black-box scoring logic
+
+⸻
+
+9. Design Trade-offs
+	•	Rule-based logic chosen over ML due to:
+	•	Lack of labeled hiring data
+	•	Need for transparency
+	•	Faster iteration and debugging
+	•	Pattern recognition prioritized over raw counts
+	•	Separate evaluation for DSA vs production skills
+
+⸻
+
+10. Versioning Strategy
+	•	V1: Rule-based heuristic engine
+	•	Future versions may add ML once sufficient data exists
+	•	Current version optimized for clarity and control
+
+⸻
+
+11. Future Scope (Not in V1)
+	•	GitHub contribution analysis
+	•	Cached scoring for repeated resumes
+	•	Optional ML-assisted refinement layer
+
+⸻
+
+12. Design Ownership
+
+SkillGuard is designed and implemented as a solo project, including problem identification, system design, and core evaluation logic.
+
