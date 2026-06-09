@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
 import {
+  calculateExperienceScore,
   calculateJdRoleFitScore,
   calculateProjectDepthScore,
   calculateRoleFitScore
@@ -32,23 +33,35 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     });
   }
 
+  // Candidate skills detected from resume
   const detectedSkills = analyzeResumeSkills(resumeText);
 
-  // Optional JD skill detection
+  // JD skills detected from job description, if provided
   const jdDetectedSkills = jobDescription
     ? analyzeResumeSkills(jobDescription)
     : [];
 
+  // Default role-map comparison, used as fallback and supporting explanation
   const roleMatch = matchSkillsToRole(detectedSkills, targetRole);
 
-  // If JD is present and we detected skills from it, use JD-based role fit.
-  // Otherwise, fall back to role map based scoring.
+  // If JD has recognizable skills, use JD-based role fit.
+  // Otherwise, fall back to default role-map scoring.
   const roleFitScore =
     jdDetectedSkills.length > 0
       ? calculateJdRoleFitScore(detectedSkills, jdDetectedSkills)
       : calculateRoleFitScore(roleMatch);
 
+  // Project depth checks USED and STRONG project/work-backed skills
   const projectDepthScore = calculateProjectDepthScore(detectedSkills);
+
+  // Experience score checks level fit, relevant experience evidence, and practical proof
+  const experienceScore = calculateExperienceScore(
+    resumeText,
+    targetRole,
+    jobDescription,
+    detectedSkills,
+    jdDetectedSkills
+  );
 
   return res.status(200).json({
     message: "SkillGuard resume analysis completed",
@@ -58,6 +71,7 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     jdDetectedSkills,
     roleMatch,
     roleFitScore,
-    projectDepthScore
+    projectDepthScore,
+    experienceScore
   });
 };
