@@ -82,6 +82,11 @@ export type ImprovementInsights = {
   recommendations: string[];
 };
 
+export type GitHubProjectProofInput = {
+  detectedGitHubStack: string[];
+  strongRepositories: string[];
+};
+
 // Calculates Role Fit score according to SCORING_LOGIC.txt
 export const calculateRoleFitScore = (
   roleMatch: RoleMatchResult
@@ -200,7 +205,9 @@ export const calculateProjectDepthScore = (
 
   const reason =
     evidenceBreakdown.length > 0
-      ? `Found ${totalProjectBackedSkills} project/work-backed skills, including ${evidenceBreakdown.join(" and ")}.`
+      ? `Found ${totalProjectBackedSkills} project/work-backed skills, including ${evidenceBreakdown.join(
+          " and "
+        )}.`
       : "No project/work-backed skills were detected.";
 
   return {
@@ -209,6 +216,71 @@ export const calculateProjectDepthScore = (
     usedSkills,
     strongSkills,
     reason
+  };
+};
+
+// Applies a small GitHub proof boost only when GitHub confirms resume/project stack evidence
+export const applyGitHubProjectProofBoost = (
+  projectDepthScore: ProjectDepthScore,
+  detectedSkills: DetectedSkill[],
+  githubProjectSignals?: GitHubProjectProofInput | null
+): ProjectDepthScore => {
+  if (!githubProjectSignals) {
+    return projectDepthScore;
+  }
+
+  const resumeProjectSkills = detectedSkills
+    .filter((skill) => skill.category !== "dsa")
+    .map((skill) => skill.name);
+
+  const confirmedStackSkills = resumeProjectSkills.filter((skillName) =>
+    githubProjectSignals.detectedGitHubStack.includes(skillName)
+  );
+
+  let boost = 0;
+
+  if (confirmedStackSkills.length >= 3) {
+    boost += 3;
+  } else if (confirmedStackSkills.length === 2) {
+    boost += 2;
+  } else if (confirmedStackSkills.length === 1) {
+    boost += 1;
+  }
+
+  if (githubProjectSignals.strongRepositories.length > 0) {
+    boost += 1;
+  }
+
+  // GitHub is only supporting proof, so keep the boost small.
+  const cappedBoost = Math.min(boost, 4);
+
+  if (cappedBoost === 0) {
+    return projectDepthScore;
+  }
+
+  const confirmedStackText =
+    confirmedStackSkills.length > 0
+      ? `GitHub confirmed ${confirmedStackSkills.join(
+          ", "
+        )} in public project repositories`
+      : "";
+
+  const strongRepoText =
+    githubProjectSignals.strongRepositories.length > 0
+      ? `${githubProjectSignals.strongRepositories.length} strong GitHub project repo(s) were found`
+      : "";
+
+  const githubReasonParts = [confirmedStackText, strongRepoText].filter(Boolean);
+
+  return {
+    ...projectDepthScore,
+    score: Math.min(
+      projectDepthScore.score + cappedBoost,
+      projectDepthScore.maxScore
+    ),
+    reason: `${projectDepthScore.reason} GitHub added a +${cappedBoost} project-proof boost: ${githubReasonParts.join(
+      "; "
+    )}.`
   };
 };
 
@@ -330,9 +402,6 @@ const calculateLevelFitScore = (
     normalizedResume.includes("developer at") ||
     normalizedResume.includes("engineer at");
 
-  // Fresher roles:
-  // Projects are enough for a decent score.
-  // Internship/fellowship/training improves the score.
   if (expectedLevel === "FRESHER") {
     if (hasInternshipEvidence && hasProjectEvidence) return 7;
     if (hasFellowshipOrTrainingEvidence && hasProjectEvidence) return 6;
@@ -341,10 +410,6 @@ const calculateLevelFitScore = (
     return 2;
   }
 
-  // Junior roles:
-  // Projects alone are not enough.
-  // Needs around 9-12 months minimum real/company experience.
-  // 1-3 years is ideal.
   if (expectedLevel === "JUNIOR") {
     if (detectedYears >= 1 && detectedYears <= 3) return 7;
     if (detectedMonths >= 9 && hasRealExperienceEvidence) return 6;
@@ -375,8 +440,6 @@ const calculateLevelFitScore = (
     return 0;
   }
 
-  // Unknown level fallback:
-  // Do not punish too hard when JD/title does not clearly say level.
   if (detectedYears >= 1) return 5;
   if (detectedMonths >= 9 && hasRealExperienceEvidence) return 4;
   if (hasProjectEvidence) return 3;
@@ -573,7 +636,6 @@ export const generateImprovementInsights = (
   const strengths: string[] = [];
   const recommendations: string[] = [];
 
-  // Role Fit insights
   if (roleFitScore.score >= 30) {
     strengths.push("Strong alignment with the required role skills.");
   } else if (roleFitScore.score >= 20) {
@@ -596,7 +658,6 @@ export const generateImprovementInsights = (
     );
   }
 
-  // Project Depth insights
   if (projectDepthScore.score >= 20) {
     strengths.push("Strong project/work-backed engineering evidence.");
   } else if (projectDepthScore.score >= 10) {
@@ -610,7 +671,6 @@ export const generateImprovementInsights = (
     );
   }
 
-  // Experience insights
   if (experienceScore.score >= 16) {
     strengths.push(
       `Experience level appears suitable for a ${experienceScore.expectedLevel.toLowerCase()} role.`
@@ -625,7 +685,6 @@ export const generateImprovementInsights = (
     );
   }
 
-  // Fundamentals insights
   if (fundamentalsScore.score >= 12) {
     strengths.push("Strong DSA/fundamentals signals detected.");
   } else if (fundamentalsScore.score >= 6) {
@@ -638,7 +697,6 @@ export const generateImprovementInsights = (
     );
   }
 
-  // Additional strengths are useful, but keep DSA separate from production skills
   if (
     roleFitScore.additionalCandidateSkills &&
     roleFitScore.additionalCandidateSkills.length > 0

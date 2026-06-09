@@ -3,6 +3,7 @@ import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
 import { fetchGitHubSignals } from "../services/githubService.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
 import {
+  applyGitHubProjectProofBoost,
   calculateExperienceScore,
   calculateFinalScore,
   calculateFundamentalsScore,
@@ -51,7 +52,13 @@ const runSingleAnalysis = async (
       ? calculateJdRoleFitScore(detectedSkills, jdDetectedSkills)
       : calculateRoleFitScore(generalRoleMatch);
 
-  const projectDepthScore = calculateProjectDepthScore(detectedSkills);
+const baseProjectDepthScore = calculateProjectDepthScore(detectedSkills);
+
+const projectDepthScore = applyGitHubProjectProofBoost(
+  baseProjectDepthScore,
+  detectedSkills,
+  githubSignals?.githubProjectSignals
+);
 
   const experienceScore = calculateExperienceScore(
     resumeText,
