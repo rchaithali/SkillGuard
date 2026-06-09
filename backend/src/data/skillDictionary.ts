@@ -113,7 +113,11 @@ export const skillDictionary: SkillDefinition[] = [
   { name: "Strings", category: "dsa", aliases: ["strings", "string"] },
   { name: "Hashing", category: "dsa", aliases: ["hashing", "hash map", "hashmap", "hash table"] },
   { name: "Linked List", category: "dsa", aliases: ["linked list", "linked lists"] },
-  { name: "Stack", category: "dsa", aliases: ["stack", "stacks"] },
+{
+  name: "Stack",
+  category: "dsa",
+  aliases: ["stack data structure", "stacks", "stack problems"]
+},
   { name: "Queue", category: "dsa", aliases: ["queue", "queues"] },
   { name: "Trees", category: "dsa", aliases: ["tree", "trees", "binary tree", "bst", "binary search tree"] },
   { name: "Graphs", category: "dsa", aliases: ["graph", "graphs", "graph theory"] },
