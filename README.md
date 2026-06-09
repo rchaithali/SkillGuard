@@ -36,6 +36,7 @@ The trade-off is lower sophistication than a trained ML model, but the system re
 - Multiple job descriptions
 - Multiple candidate resumes
 - Optional GitHub username per candidate
+- Optional coding profile data per candidate
 
 This allows SkillGuard to rank candidates for one role or group and rank candidates across multiple roles.
 
@@ -47,6 +48,7 @@ This allows SkillGuard to rank candidates for one role or group and rank candida
 - Job-description skill extraction
 - General role-map comparison
 - Optional GitHub project proof signals
+- Optional coding profile data
 - Role Fit score /40
 - Project Depth score /25
 - Experience score /20
@@ -201,6 +203,72 @@ Scoring:
 
 text Each distinct DSA/fundamentals signal = +3 Maximum = 15 
 
+## Coding Profile / DSA Proof Signals
+
+SkillGuard supports optional coding profile evidence through codingProfile.
+
+Coding profile data is used as supporting proof for DSA/fundamentals evidence, similar to how GitHub is used as proof for project stack evidence.
+
+### Current Coding Profile Input
+
+SkillGuard currently accepts structured coding profile data such as:
+
+json {   "codingProfile": {     "platform": "LEETCODE",     "username": "sample_user",     "totalSolved": 160,     "easySolved": 100,     "mediumSolved": 55,     "hardSolved": 5,     "contestRating": 1500   } } 
+
+Supported platforms:
+
+- LEETCODE
+- CODECHEF
+- CODEFORCES
+- OTHER
+
+### DSA Proof Levels
+
+SkillGuard classifies coding profile evidence into proof levels:
+
+- NONE
+- BASIC
+- INTERMEDIATE
+- ADVANCED
+
+The classification considers both total solved count and difficulty distribution.
+
+### Basic Proof
+
+text totalSolved >= 20 
+
+This indicates some consistent problem-solving practice.
+
+### Intermediate Proof
+
+text (totalSolved >= 75 AND mediumSolved >= 20) OR mediumSolved >= 30 OR contestRating >= 1400 
+
+This indicates meaningful DSA practice beyond easy-only solving.
+
+### Advanced Proof
+
+text (totalSolved >= 150 AND mediumSolved >= 50 AND hardSolved >= 5) OR (mediumSolved >= 70 AND hardSolved >= 10) OR contestRating >= 1700 
+
+This prevents easy-only volume from being treated as advanced DSA evidence.
+
+For example:
+
+text 150 easy problems only → not ADVANCED 120 total with 55 medium and 10 hard → INTERMEDIATE 160 total with 55 medium and 5 hard → ADVANCED 
+
+### How Coding Profile Proof Is Used
+
+Coding profile evidence does not inflate the score beyond the Fundamentals cap.
+
+Instead, it strengthens the explanation when resume DSA signals are already detected.
+
+Example output:
+
+text Detected 6 distinct DSA/fundamentals signal(s). Coding profile proof: LEETCODE (advanced_user) shows advanced problem-solving evidence with 160 solved problem(s). 
+
+This keeps the system explainable:
+
+text Resume → claims DSA/fundamentals Coding profile → supports DSA practice evidence 
+
 ## Batch Recruiter Ranking
 
 SkillGuard supports recruiter batch screening.
@@ -253,7 +321,6 @@ http POST /api/analyze/batch
 
 ## Planned Improvements
 
-- LeetCode / DSA signal integration
 - Cleaner report structure for frontend display
 - MongoDB-based saved reports/history
 - React + Tailwind frontend dashboard
