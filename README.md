@@ -6,7 +6,7 @@ SkillGuard is an explainable candidate evaluation system that analyzes resume ev
 
 Referral-stage and early hiring screening can become noisy when recruiters receive many resumes for one or more open roles. Manual review is time-consuming, and keyword-only matching often misses the difference between skills that are merely listed and skills that are actually demonstrated through projects or work experience.
 
-SkillGuard reduces this screening effort by producing structured, explainable role-readiness signals based on resume evidence, job-description alignment, project depth, experience fit, and fundamentals.
+SkillGuard reduces this screening effort by producing structured, explainable role-readiness signals based on resume evidence, job-description alignment, project depth, experience fit, fundamentals, and optional GitHub project proof.
 
 ## Why Rule-Based Logic
 
@@ -26,6 +26,7 @@ The trade-off is lower sophistication than a trained ML model, but the system re
 - Resume text
 - Target role
 - Optional job description
+- Optional GitHub username
 - Viewer type:
   - RECRUITER
   - CANDIDATE
@@ -34,6 +35,7 @@ The trade-off is lower sophistication than a trained ML model, but the system re
 
 - Multiple job descriptions
 - Multiple candidate resumes
+- Optional GitHub username per candidate
 
 This allows SkillGuard to rank candidates for one role or group and rank candidates across multiple roles.
 
@@ -44,6 +46,7 @@ This allows SkillGuard to rank candidates for one role or group and rank candida
 - Detected skills from resume
 - Job-description skill extraction
 - General role-map comparison
+- Optional GitHub project proof signals
 - Role Fit score /40
 - Project Depth score /25
 - Experience score /20
@@ -101,6 +104,67 @@ text USED skill   = +2 STRONG skill = +5 Maximum      = 25
 
 DSA skills are excluded from Project Depth because they are scored separately under Fundamentals.
 
+## GitHub Project Proof Signals
+
+SkillGuard supports optional GitHub public profile analysis through githubUsername.
+
+GitHub is used as supporting project evidence, not as a replacement for resume or job-description matching.
+
+### What GitHub Currently Verifies
+
+SkillGuard fetches:
+
+- Public GitHub profile
+- Recent public repositories
+- Repository languages
+- Root package.json
+- backend/package.json
+- frontend/package.json
+
+From package files, SkillGuard detects stack evidence such as:
+
+- Express.js
+- MongoDB
+- JWT
+- Bcrypt
+- React
+- Vite
+- Tailwind CSS
+- TypeScript
+
+### GitHub as Project Proof
+
+GitHub does not directly improve Role Fit.
+
+Instead, GitHub provides a small Project Depth boost only when the resume claims a skill and GitHub package files confirm that same stack.
+
+Example:
+
+text Resume mentions: Express.js, MongoDB GitHub confirms: Express.js, MongoDB Result: small project-proof boost in Project Depth 
+
+This keeps the scoring explainable and prevents GitHub from inventing skills that are not present in the resume.
+
+### GitHub Boost Rule
+
+text GitHub proof boost applies only to Project Depth. Maximum boost: +4 
+
+Boost is based on:
+
+- Confirmed overlap between resume skills and GitHub-detected stack
+- Presence of strong recent GitHub project repositories
+
+Example output:
+
+text GitHub added a +3 project-proof boost: GitHub confirmed Express.js, MongoDB in public project repositories; 2 strong GitHub project repo(s) were found. 
+
+### Safe Fallback
+
+If the GitHub username is invalid or GitHub data cannot be fetched, SkillGuard returns:
+
+json {   "githubSignals": null } 
+
+The main resume/JD analysis still works normally.
+
 ## Experience /20
 
 Experience is scored using:
@@ -152,6 +216,7 @@ Output:
 - Recommendation
 - Matched skills
 - Missing skills
+- GitHub proof signals when available
 - Score breakdown
 
 ### Multiple Roles, Multiple Candidates
@@ -182,12 +247,12 @@ http POST /api/analyze/batch
 - Node.js
 - TypeScript
 - Express.js
+- GitHub public API integration
 - Rule-based scoring logic
 - Modular backend architecture
 
 ## Planned Improvements
 
-- GitHub public API signal integration
 - LeetCode / DSA signal integration
 - Cleaner report structure for frontend display
 - MongoDB-based saved reports/history
