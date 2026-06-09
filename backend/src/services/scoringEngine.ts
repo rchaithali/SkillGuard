@@ -9,12 +9,77 @@ export type RoleFitScore = {
   reason: string;
 };
 
+export type JdRoleFitScore = {
+  score: number;
+  maxScore: number;
+  matchedSkillsCount: number;
+  totalRequiredSkills: number;
+  matchedSkills: string[];
+  missingSkills: string[];
+  additionalCandidateSkills: string[];
+  reason: string;
+};
+
 export type ProjectDepthScore = {
   score: number;
   maxScore: number;
   usedSkills: string[];
   strongSkills: string[];
   reason: string;
+};
+
+export type ExperienceLevel =
+  | "FRESHER"
+  | "JUNIOR"
+  | "MID_LEVEL"
+  | "SENIOR"
+  | "LEAD"
+  | "UNKNOWN";
+
+export type ExperienceScore = {
+  score: number;
+  maxScore: number;
+  expectedLevel: ExperienceLevel;
+  detectedYears: number;
+  detectedMonths: number;
+  levelFitScore: number;
+  relevantEvidenceScore: number;
+  practicalProofScore: number;
+  detectedRelevantSignals: string[];
+  detectedPracticalSignals: string[];
+  reason: string;
+};
+
+export type FundamentalsScore = {
+  score: number;
+  maxScore: number;
+  detectedFundamentals: string[];
+  detectedCount: number;
+  reason: string;
+};
+
+export type FinalRecommendation =
+  | "DIRECT_INTERVIEW"
+  | "PHONE_SCREEN"
+  | "ASSESSMENT"
+  | "NOT_READY";
+
+export type FinalScoreResult = {
+  finalScore: number;
+  maxScore: number;
+  recommendation: FinalRecommendation;
+  breakdown: {
+    roleFit: number;
+    projectDepth: number;
+    experience: number;
+    fundamentals: number;
+  };
+  reason: string;
+};
+
+export type ImprovementInsights = {
+  strengths: string[];
+  recommendations: string[];
 };
 
 // Calculates Role Fit score according to SCORING_LOGIC.txt
@@ -29,14 +94,14 @@ export const calculateRoleFitScore = (
   const totalRequiredSkills =
     roleMatch.totalCoreSkills + roleMatch.totalSecondarySkills;
 
-  // Safety check for unsupported roles or empty role configs
   if (totalRequiredSkills === 0) {
     return {
       score: 0,
       maxScore,
       matchedSkillsCount: 0,
       totalRequiredSkills: 0,
-      reason: "No required skills found for this role, so role fit could not be calculated."
+      reason:
+        "No required skills found for this role, so role fit could not be calculated."
     };
   }
 
@@ -49,16 +114,6 @@ export const calculateRoleFitScore = (
     totalRequiredSkills,
     reason: `Matched ${matchedSkillsCount}/${totalRequiredSkills} required skills for ${roleMatch.targetRole}.`
   };
-};
-export type JdRoleFitScore = {
-  score: number;
-  maxScore: number;
-  matchedSkillsCount: number;
-  totalRequiredSkills: number;
-  matchedSkills: string[];
-  missingSkills: string[];
-  additionalCandidateSkills: string[];
-  reason: string;
 };
 
 // Calculates Role Fit score using JD skills when job description is provided
@@ -95,7 +150,8 @@ export const calculateJdRoleFitScore = (
       matchedSkills: [],
       missingSkills: [],
       additionalCandidateSkills,
-      reason: "No recognizable required skills were detected from the job description."
+      reason:
+        "No recognizable required skills were detected from the job description."
     };
   }
 
@@ -112,6 +168,7 @@ export const calculateJdRoleFitScore = (
     reason: `Matched ${matchedSkillsCount}/${totalRequiredSkills} skills required by the job description.`
   };
 };
+
 // Calculates Project Depth score based on USED and STRONG skill evidence
 export const calculateProjectDepthScore = (
   detectedSkills: DetectedSkill[]
@@ -131,7 +188,7 @@ export const calculateProjectDepthScore = (
 
   const totalProjectBackedSkills = usedSkills.length + strongSkills.length;
 
-  const evidenceBreakdown = [];
+  const evidenceBreakdown: string[] = [];
 
   if (strongSkills.length > 0) {
     evidenceBreakdown.push(`${strongSkills.length} strong skill(s)`);
@@ -153,28 +210,6 @@ export const calculateProjectDepthScore = (
     strongSkills,
     reason
   };
-};
-
-export type ExperienceLevel =
-  | "FRESHER"
-  | "JUNIOR"
-  | "MID_LEVEL"
-  | "SENIOR"
-  | "LEAD"
-  | "UNKNOWN";
-
-export type ExperienceScore = {
-  score: number;
-  maxScore: number;
-  expectedLevel: ExperienceLevel;
-  detectedYears: number;
-  detectedMonths: number;
-  levelFitScore: number;
-  relevantEvidenceScore: number;
-  practicalProofScore: number;
-  detectedRelevantSignals: string[];
-  detectedPracticalSignals: string[];
-  reason: string;
 };
 
 // Detects expected experience level from JD first, then target role fallback
@@ -367,7 +402,6 @@ export const calculateExperienceScore = (
   const detectedYears = detectYears(resumeText);
   const detectedMonths = detectMonths(resumeText);
 
-  // 1. Level Fit score: max 7
   const levelFitScore = calculateLevelFitScore(
     expectedLevel,
     detectedYears,
@@ -375,7 +409,6 @@ export const calculateExperienceScore = (
     resumeText
   );
 
-  // 2. Relevant Experience Evidence score: max 8
   const candidateSkillNames = detectedSkills.map((skill) => skill.name);
   const jdSkillNames = jdDetectedSkills.map((skill) => skill.name);
 
@@ -406,7 +439,6 @@ export const calculateExperienceScore = (
     8
   );
 
-  // 3. Practical Proof score: max 5
   const practicalSignals = [
     "built",
     "implemented",
@@ -447,13 +479,6 @@ export const calculateExperienceScore = (
     reason: `Experience score is ${score}/20 based on ${expectedLevel.toLowerCase()} level fit, ${detectedYears} detected year(s), ${detectedMonths} detected month(s), ${detectedRelevantSignals.length} relevant evidence signal(s), and ${detectedPracticalSignals.length} practical proof signal(s).`
   };
 };
-export type FundamentalsScore = {
-  score: number;
-  maxScore: number;
-  detectedFundamentals: string[];
-  detectedCount: number;
-  reason: string;
-};
 
 // Calculates Fundamentals/DSA score based on distinct DSA-related signals
 export const calculateFundamentalsScore = (
@@ -461,12 +486,10 @@ export const calculateFundamentalsScore = (
 ): FundamentalsScore => {
   const maxScore = 15;
 
-  // Only skills from the DSA category count toward fundamentals
   const detectedFundamentals = detectedSkills
     .filter((skill) => skill.category === "dsa")
     .map((skill) => skill.name);
 
-  // Remove duplicates just in case
   const uniqueFundamentals = [...new Set(detectedFundamentals)];
 
   const score = Math.min(uniqueFundamentals.length * 3, maxScore);
@@ -478,24 +501,6 @@ export const calculateFundamentalsScore = (
     detectedCount: uniqueFundamentals.length,
     reason: `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s).`
   };
-};
-export type FinalRecommendation =
-  | "DIRECT_INTERVIEW"
-  | "PHONE_SCREEN"
-  | "ASSESSMENT"
-  | "NOT_READY";
-
-export type FinalScoreResult = {
-  finalScore: number;
-  maxScore: number;
-  recommendation: FinalRecommendation;
-  breakdown: {
-    roleFit: number;
-    projectDepth: number;
-    experience: number;
-    fundamentals: number;
-  };
-  reason: string;
 };
 
 // Calculates final readiness score and routing recommendation
@@ -534,5 +539,133 @@ export const calculateFinalScore = (
       fundamentals: fundamentalsScore.score
     },
     reason: `Final score is ${finalScore}/100. Recommendation: ${recommendation}.`
+  };
+};
+
+// Generates candidate-facing improvement insights from score outputs
+export const generateImprovementInsights = (
+  roleFitScore: {
+    score: number;
+    maxScore: number;
+    matchedSkills?: string[];
+    missingSkills?: string[];
+    additionalCandidateSkills?: string[];
+  },
+  projectDepthScore: {
+    score: number;
+    maxScore: number;
+    strongSkills: string[];
+    usedSkills: string[];
+  },
+  experienceScore: {
+    score: number;
+    maxScore: number;
+    expectedLevel: string;
+    detectedYears: number;
+    detectedMonths: number;
+  },
+  fundamentalsScore: {
+    score: number;
+    maxScore: number;
+    detectedFundamentals: string[];
+  }
+): ImprovementInsights => {
+  const strengths: string[] = [];
+  const recommendations: string[] = [];
+
+  // Role Fit insights
+  if (roleFitScore.score >= 30) {
+    strengths.push("Strong alignment with the required role skills.");
+  } else if (roleFitScore.score >= 20) {
+    strengths.push("Moderate alignment with the required role skills.");
+  } else {
+    recommendations.push(
+      "Improve role fit by aligning the resume more closely with the required job skills."
+    );
+  }
+
+  if (roleFitScore.missingSkills && roleFitScore.missingSkills.length > 0) {
+    const missingSkillsText = roleFitScore.missingSkills.join(", ");
+
+    recommendations.push(
+      `Build or update one role-relevant project to clearly demonstrate ${missingSkillsText}, then mention the implementation details in the resume.`
+    );
+
+    recommendations.push(
+      "Focus on showing practical usage, not just listing the skill names."
+    );
+  }
+
+  // Project Depth insights
+  if (projectDepthScore.score >= 20) {
+    strengths.push("Strong project/work-backed engineering evidence.");
+  } else if (projectDepthScore.score >= 10) {
+    strengths.push("Some practical project/work evidence is present.");
+    recommendations.push(
+      "Add more project details showing implementation depth, ownership, and real technical decisions."
+    );
+  } else {
+    recommendations.push(
+      "Strengthen project descriptions with what was built, how it was implemented, and what technical problems were solved."
+    );
+  }
+
+  // Experience insights
+  if (experienceScore.score >= 16) {
+    strengths.push(
+      `Experience level appears suitable for a ${experienceScore.expectedLevel.toLowerCase()} role.`
+    );
+  } else if (experienceScore.score >= 10) {
+    recommendations.push(
+      "Make experience evidence clearer by mentioning duration, role context, and relevant responsibilities."
+    );
+  } else {
+    recommendations.push(
+      "Make experience evidence clearer by mentioning duration, role context, company/project setting, and relevant responsibilities."
+    );
+  }
+
+  // Fundamentals insights
+  if (fundamentalsScore.score >= 12) {
+    strengths.push("Strong DSA/fundamentals signals detected.");
+  } else if (fundamentalsScore.score >= 6) {
+    recommendations.push(
+      "Add stronger DSA/fundamentals evidence such as arrays, hashing, trees, graphs, DP, or time complexity."
+    );
+  } else {
+    recommendations.push(
+      "Add clear DSA/fundamentals evidence if the role expects coding rounds."
+    );
+  }
+
+  // Additional strengths are useful, but keep DSA separate from production skills
+  if (
+    roleFitScore.additionalCandidateSkills &&
+    roleFitScore.additionalCandidateSkills.length > 0
+  ) {
+    const technicalStrengths = roleFitScore.additionalCandidateSkills.filter(
+      (skill) => !fundamentalsScore.detectedFundamentals.includes(skill)
+    );
+
+    const fundamentalsStrengths = roleFitScore.additionalCandidateSkills.filter(
+      (skill) => fundamentalsScore.detectedFundamentals.includes(skill)
+    );
+
+    if (technicalStrengths.length > 0) {
+      strengths.push(
+        `Additional technical strength(s): ${technicalStrengths.join(", ")}.`
+      );
+    }
+
+    if (fundamentalsStrengths.length > 0) {
+      strengths.push(
+        `Additional fundamentals strength(s): ${fundamentalsStrengths.join(", ")}.`
+      );
+    }
+  }
+
+  return {
+    strengths,
+    recommendations
   };
 };

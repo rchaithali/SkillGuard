@@ -7,12 +7,15 @@ import {
   calculateFundamentalsScore,
   calculateJdRoleFitScore,
   calculateProjectDepthScore,
-  calculateRoleFitScore
+  calculateRoleFitScore,
+  generateImprovementInsights
 } from "../services/scoringEngine.js";
+
+type ViewerType = "RECRUITER" | "CANDIDATE";
 
 // Handles POST /api/analyze
 export const analyzeCandidate = (req: Request, res: Response) => {
-  const { resumeText, targetRole, jobDescription } = req.body;
+  const { resumeText, targetRole, jobDescription, viewerType } = req.body;
 
   // Resume text is required because SkillGuard analyzes candidate evidence from it
   if (!resumeText || typeof resumeText !== "string") {
@@ -34,6 +37,10 @@ export const analyzeCandidate = (req: Request, res: Response) => {
       message: "Job description must be a string when provided"
     });
   }
+
+  // Viewer type is optional. Default is recruiter because SkillGuard is mainly a hiring intelligence system.
+  const normalizedViewerType: ViewerType =
+    viewerType === "CANDIDATE" ? "CANDIDATE" : "RECRUITER";
 
   // Candidate skills detected from resume
   const detectedSkills = analyzeResumeSkills(resumeText);
@@ -64,16 +71,29 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     detectedSkills,
     jdDetectedSkills
   );
-  const fundamentalsScore = calculateFundamentalsScore(detectedSkills);
-  const finalScore = calculateFinalScore(
-  roleFitScore,
-  projectDepthScore,
-  experienceScore,
-  fundamentalsScore
-);
 
-  return res.status(200).json({
+  // Fundamentals score checks DSA/CS fundamentals signals
+  const fundamentalsScore = calculateFundamentalsScore(detectedSkills);
+
+  // Final score combines all four scoring components
+  const finalScore = calculateFinalScore(
+    roleFitScore,
+    projectDepthScore,
+    experienceScore,
+    fundamentalsScore
+  );
+
+  // Candidate-facing improvement insights
+  const improvementInsights = generateImprovementInsights(
+    roleFitScore,
+    projectDepthScore,
+    experienceScore,
+    fundamentalsScore
+  );
+
+  const baseResponse = {
     message: "SkillGuard resume analysis completed",
+    viewerType: normalizedViewerType,
     targetRole,
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
     detectedSkills,
@@ -84,5 +104,19 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     experienceScore,
     fundamentalsScore,
     finalScore
+  };
+
+  // Candidate mode: show improvement/coaching insights
+  if (normalizedViewerType === "CANDIDATE") {
+    return res.status(200).json({
+      ...baseResponse,
+      improvementInsights
+    });
+  }
+
+  // Recruiter mode: do not expose candidate-coaching suggestions by default
+  return res.status(200).json({
+    ...baseResponse,
+    candidateFeedbackAvailable: true
   });
 };
