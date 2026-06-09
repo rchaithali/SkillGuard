@@ -112,7 +112,7 @@ export const calculateRoleFitScore = (
     maxScore,
     matchedSkillsCount,
     totalRequiredSkills,
-    reason: `Matched ${matchedSkillsCount}/${totalRequiredSkills} required skills for ${roleMatch.targetRole}.`
+    reason: `Matched ${matchedSkillsCount}/${totalRequiredSkills} required skills using the ${roleMatch.normalizedRole} role map.`
   };
 };
 

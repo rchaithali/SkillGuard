@@ -35,12 +35,14 @@ const runSingleAnalysis = (
     ? analyzeResumeSkills(jobDescription)
     : [];
 
-  const roleMatch = matchSkillsToRole(detectedSkills, targetRole);
+  // This is the general/default role-map comparison.
+  // It is useful for explanation, but when JD exists, final role fit uses JD skills.
+  const generalRoleMatch = matchSkillsToRole(detectedSkills, targetRole);
 
   const roleFitScore =
     jdDetectedSkills.length > 0
       ? calculateJdRoleFitScore(detectedSkills, jdDetectedSkills)
-      : calculateRoleFitScore(roleMatch);
+      : calculateRoleFitScore(generalRoleMatch);
 
   const projectDepthScore = calculateProjectDepthScore(detectedSkills);
 
@@ -72,7 +74,7 @@ const runSingleAnalysis = (
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
     detectedSkills,
     jdDetectedSkills,
-    roleMatch,
+    generalRoleMatch,
     roleFitScore,
     projectDepthScore,
     experienceScore,
@@ -114,9 +116,14 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     viewerType: normalizedViewerType,
     targetRole,
     scoringSource: analysis.scoringSource,
+
     detectedSkills: analysis.detectedSkills,
     jdDetectedSkills: analysis.jdDetectedSkills,
-    roleMatch: analysis.roleMatch,
+
+    // General role-map comparison, separate from active scoring when JD exists
+    generalRoleMatchSource: "ROLE_MAP",
+    generalRoleMatch: analysis.generalRoleMatch,
+
     roleFitScore: analysis.roleFitScore,
     projectDepthScore: analysis.projectDepthScore,
     experienceScore: analysis.experienceScore,
@@ -193,6 +200,7 @@ export const analyzeBatchCandidates = (req: Request, res: Response) => {
         return {
           candidateName: candidate.candidateName,
           targetRole: job.targetRole,
+          scoringSource: analysis.scoringSource,
           finalScore: analysis.finalScore.finalScore,
           recommendation: analysis.finalScore.recommendation,
           matchedSkills:
