@@ -13,57 +13,37 @@ import {
 
 type ViewerType = "RECRUITER" | "CANDIDATE";
 
-// Handles POST /api/analyze
-export const analyzeCandidate = (req: Request, res: Response) => {
-  const { resumeText, targetRole, jobDescription, viewerType } = req.body;
+type CandidateInput = {
+  candidateName: string;
+  resumeText: string;
+};
 
-  // Resume text is required because SkillGuard analyzes candidate evidence from it
-  if (!resumeText || typeof resumeText !== "string") {
-    return res.status(400).json({
-      message: "Resume text is required and must be a string"
-    });
-  }
+type JobInput = {
+  targetRole: string;
+  jobDescription: string;
+};
 
-  // Target role is still required as fallback when JD is not provided
-  if (!targetRole || typeof targetRole !== "string") {
-    return res.status(400).json({
-      message: "Target role is required and must be a string"
-    });
-  }
-
-  // Job description is optional, but if provided, it must be text
-  if (jobDescription && typeof jobDescription !== "string") {
-    return res.status(400).json({
-      message: "Job description must be a string when provided"
-    });
-  }
-
-  // Viewer type is optional. Default is recruiter because SkillGuard is mainly a hiring intelligence system.
-  const normalizedViewerType: ViewerType =
-    viewerType === "CANDIDATE" ? "CANDIDATE" : "RECRUITER";
-
-  // Candidate skills detected from resume
+// Shared helper: analyzes one candidate against one role/JD
+const runSingleAnalysis = (
+  resumeText: string,
+  targetRole: string,
+  jobDescription?: string
+) => {
   const detectedSkills = analyzeResumeSkills(resumeText);
 
-  // JD skills detected from job description, if provided
   const jdDetectedSkills = jobDescription
     ? analyzeResumeSkills(jobDescription)
     : [];
 
-  // Default role-map comparison, used as fallback and supporting explanation
   const roleMatch = matchSkillsToRole(detectedSkills, targetRole);
 
-  // If JD has recognizable skills, use JD-based role fit.
-  // Otherwise, fall back to default role-map scoring.
   const roleFitScore =
     jdDetectedSkills.length > 0
       ? calculateJdRoleFitScore(detectedSkills, jdDetectedSkills)
       : calculateRoleFitScore(roleMatch);
 
-  // Project depth checks USED and STRONG project/work-backed skills
   const projectDepthScore = calculateProjectDepthScore(detectedSkills);
 
-  // Experience score checks level fit, relevant experience evidence, and practical proof
   const experienceScore = calculateExperienceScore(
     resumeText,
     targetRole,
@@ -72,10 +52,8 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     jdDetectedSkills
   );
 
-  // Fundamentals score checks DSA/CS fundamentals signals
   const fundamentalsScore = calculateFundamentalsScore(detectedSkills);
 
-  // Final score combines all four scoring components
   const finalScore = calculateFinalScore(
     roleFitScore,
     projectDepthScore,
@@ -83,7 +61,6 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     fundamentalsScore
   );
 
-  // Candidate-facing improvement insights
   const improvementInsights = generateImprovementInsights(
     roleFitScore,
     projectDepthScore,
@@ -91,10 +68,7 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     fundamentalsScore
   );
 
-  const baseResponse = {
-    message: "SkillGuard resume analysis completed",
-    viewerType: normalizedViewerType,
-    targetRole,
+  return {
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
     detectedSkills,
     jdDetectedSkills,
@@ -103,20 +77,150 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     projectDepthScore,
     experienceScore,
     fundamentalsScore,
-    finalScore
+    finalScore,
+    improvementInsights
   };
+};
 
-  // Candidate mode: show improvement/coaching insights
-  if (normalizedViewerType === "CANDIDATE") {
-    return res.status(200).json({
-      ...baseResponse,
-      improvementInsights
+// Handles POST /api/analyze
+export const analyzeCandidate = (req: Request, res: Response) => {
+  const { resumeText, targetRole, jobDescription, viewerType } = req.body;
+
+  if (!resumeText || typeof resumeText !== "string") {
+    return res.status(400).json({
+      message: "Resume text is required and must be a string"
     });
   }
 
-  // Recruiter mode: do not expose candidate-coaching suggestions by default
+  if (!targetRole || typeof targetRole !== "string") {
+    return res.status(400).json({
+      message: "Target role is required and must be a string"
+    });
+  }
+
+  if (jobDescription && typeof jobDescription !== "string") {
+    return res.status(400).json({
+      message: "Job description must be a string when provided"
+    });
+  }
+
+  const normalizedViewerType: ViewerType =
+    viewerType === "CANDIDATE" ? "CANDIDATE" : "RECRUITER";
+
+  const analysis = runSingleAnalysis(resumeText, targetRole, jobDescription);
+
+  const baseResponse = {
+    message: "SkillGuard resume analysis completed",
+    viewerType: normalizedViewerType,
+    targetRole,
+    scoringSource: analysis.scoringSource,
+    detectedSkills: analysis.detectedSkills,
+    jdDetectedSkills: analysis.jdDetectedSkills,
+    roleMatch: analysis.roleMatch,
+    roleFitScore: analysis.roleFitScore,
+    projectDepthScore: analysis.projectDepthScore,
+    experienceScore: analysis.experienceScore,
+    fundamentalsScore: analysis.fundamentalsScore,
+    finalScore: analysis.finalScore
+  };
+
+  if (normalizedViewerType === "CANDIDATE") {
+    return res.status(200).json({
+      ...baseResponse,
+      improvementInsights: analysis.improvementInsights
+    });
+  }
+
   return res.status(200).json({
     ...baseResponse,
     candidateFeedbackAvailable: true
+  });
+};
+
+// Handles POST /api/analyze/batch
+export const analyzeBatchCandidates = (req: Request, res: Response) => {
+  const { jobs, candidates } = req.body;
+
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    return res.status(400).json({
+      message: "Jobs must be a non-empty array"
+    });
+  }
+
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return res.status(400).json({
+      message: "Candidates must be a non-empty array"
+    });
+  }
+
+  const invalidJob = jobs.find(
+    (job: JobInput) =>
+      !job.targetRole ||
+      typeof job.targetRole !== "string" ||
+      !job.jobDescription ||
+      typeof job.jobDescription !== "string"
+  );
+
+  if (invalidJob) {
+    return res.status(400).json({
+      message: "Each job must have targetRole and jobDescription as strings"
+    });
+  }
+
+  const invalidCandidate = candidates.find(
+    (candidate: CandidateInput) =>
+      !candidate.candidateName ||
+      typeof candidate.candidateName !== "string" ||
+      !candidate.resumeText ||
+      typeof candidate.resumeText !== "string"
+  );
+
+  if (invalidCandidate) {
+    return res.status(400).json({
+      message: "Each candidate must have candidateName and resumeText as strings"
+    });
+  }
+
+  const roleGroups = jobs.map((job: JobInput) => {
+    const rankedCandidates = candidates
+      .map((candidate: CandidateInput) => {
+        const analysis = runSingleAnalysis(
+          candidate.resumeText,
+          job.targetRole,
+          job.jobDescription
+        );
+
+        return {
+          candidateName: candidate.candidateName,
+          targetRole: job.targetRole,
+          finalScore: analysis.finalScore.finalScore,
+          recommendation: analysis.finalScore.recommendation,
+          matchedSkills:
+            "matchedSkills" in analysis.roleFitScore
+              ? analysis.roleFitScore.matchedSkills
+              : [],
+          missingSkills:
+            "missingSkills" in analysis.roleFitScore
+              ? analysis.roleFitScore.missingSkills
+              : [],
+          breakdown: analysis.finalScore.breakdown
+        };
+      })
+      .sort((a, b) => b.finalScore - a.finalScore)
+      .map((candidate, index) => ({
+        rank: index + 1,
+        ...candidate
+      }));
+
+    return {
+      targetRole: job.targetRole,
+      rankedCandidates
+    };
+  });
+
+  return res.status(200).json({
+    message: "SkillGuard batch recruiter analysis completed",
+    mode: "MULTI_ROLE_CANDIDATE_RANKING",
+    roleGroups
   });
 };
