@@ -479,3 +479,60 @@ export const calculateFundamentalsScore = (
     reason: `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s).`
   };
 };
+export type FinalRecommendation =
+  | "DIRECT_INTERVIEW"
+  | "PHONE_SCREEN"
+  | "ASSESSMENT"
+  | "NOT_READY";
+
+export type FinalScoreResult = {
+  finalScore: number;
+  maxScore: number;
+  recommendation: FinalRecommendation;
+  breakdown: {
+    roleFit: number;
+    projectDepth: number;
+    experience: number;
+    fundamentals: number;
+  };
+  reason: string;
+};
+
+// Calculates final readiness score and routing recommendation
+export const calculateFinalScore = (
+  roleFitScore: { score: number },
+  projectDepthScore: { score: number },
+  experienceScore: { score: number },
+  fundamentalsScore: { score: number }
+): FinalScoreResult => {
+  const maxScore = 100;
+
+  const finalScore =
+    roleFitScore.score +
+    projectDepthScore.score +
+    experienceScore.score +
+    fundamentalsScore.score;
+
+  let recommendation: FinalRecommendation = "NOT_READY";
+
+  if (finalScore >= 80) {
+    recommendation = "DIRECT_INTERVIEW";
+  } else if (finalScore >= 60) {
+    recommendation = "PHONE_SCREEN";
+  } else if (finalScore >= 40) {
+    recommendation = "ASSESSMENT";
+  }
+
+  return {
+    finalScore,
+    maxScore,
+    recommendation,
+    breakdown: {
+      roleFit: roleFitScore.score,
+      projectDepth: projectDepthScore.score,
+      experience: experienceScore.score,
+      fundamentals: fundamentalsScore.score
+    },
+    reason: `Final score is ${finalScore}/100. Recommendation: ${recommendation}.`
+  };
+};

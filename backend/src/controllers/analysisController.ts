@@ -3,6 +3,7 @@ import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
 import {
   calculateExperienceScore,
+  calculateFinalScore,
   calculateFundamentalsScore,
   calculateJdRoleFitScore,
   calculateProjectDepthScore,
@@ -64,6 +65,12 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     jdDetectedSkills
   );
   const fundamentalsScore = calculateFundamentalsScore(detectedSkills);
+  const finalScore = calculateFinalScore(
+  roleFitScore,
+  projectDepthScore,
+  experienceScore,
+  fundamentalsScore
+);
 
   return res.status(200).json({
     message: "SkillGuard resume analysis completed",
@@ -75,6 +82,7 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     roleFitScore,
     projectDepthScore,
     experienceScore,
-    fundamentalsScore
+    fundamentalsScore,
+    finalScore
   });
 };
