@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
+import { fetchGitHubSignals } from "../services/githubService.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
 import {
   calculateExperienceScore,
@@ -16,6 +17,7 @@ type ViewerType = "RECRUITER" | "CANDIDATE";
 type CandidateInput = {
   candidateName: string;
   resumeText: string;
+  githubUsername?: string;
 };
 
 type JobInput = {
@@ -24,16 +26,21 @@ type JobInput = {
 };
 
 // Shared helper: analyzes one candidate against one role/JD
-const runSingleAnalysis = (
+const runSingleAnalysis = async (
   resumeText: string,
   targetRole: string,
-  jobDescription?: string
+  jobDescription?: string,
+  githubUsername?: string
 ) => {
   const detectedSkills = analyzeResumeSkills(resumeText);
 
   const jdDetectedSkills = jobDescription
     ? analyzeResumeSkills(jobDescription)
     : [];
+
+  const githubSignals = githubUsername
+    ? await fetchGitHubSignals(githubUsername)
+    : null;
 
   // This is the general/default role-map comparison.
   // It is useful for explanation, but when JD exists, final role fit uses JD skills.
@@ -74,6 +81,7 @@ const runSingleAnalysis = (
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
     detectedSkills,
     jdDetectedSkills,
+    githubSignals,
     generalRoleMatch,
     roleFitScore,
     projectDepthScore,
@@ -85,8 +93,14 @@ const runSingleAnalysis = (
 };
 
 // Handles POST /api/analyze
-export const analyzeCandidate = (req: Request, res: Response) => {
-  const { resumeText, targetRole, jobDescription, viewerType } = req.body;
+export const analyzeCandidate = async (req: Request, res: Response) => {
+  const {
+    resumeText,
+    targetRole,
+    jobDescription,
+    viewerType,
+    githubUsername
+  } = req.body;
 
   if (!resumeText || typeof resumeText !== "string") {
     return res.status(400).json({
@@ -106,10 +120,21 @@ export const analyzeCandidate = (req: Request, res: Response) => {
     });
   }
 
+  if (githubUsername && typeof githubUsername !== "string") {
+    return res.status(400).json({
+      message: "GitHub username must be a string when provided"
+    });
+  }
+
   const normalizedViewerType: ViewerType =
     viewerType === "CANDIDATE" ? "CANDIDATE" : "RECRUITER";
 
-  const analysis = runSingleAnalysis(resumeText, targetRole, jobDescription);
+  const analysis = await runSingleAnalysis(
+    resumeText,
+    targetRole,
+    jobDescription,
+    githubUsername
+  );
 
   const baseResponse = {
     message: "SkillGuard resume analysis completed",
@@ -119,8 +144,8 @@ export const analyzeCandidate = (req: Request, res: Response) => {
 
     detectedSkills: analysis.detectedSkills,
     jdDetectedSkills: analysis.jdDetectedSkills,
+    githubSignals: analysis.githubSignals,
 
-    // General role-map comparison, separate from active scoring when JD exists
     generalRoleMatchSource: "ROLE_MAP",
     generalRoleMatch: analysis.generalRoleMatch,
 
@@ -145,7 +170,7 @@ export const analyzeCandidate = (req: Request, res: Response) => {
 };
 
 // Handles POST /api/analyze/batch
-export const analyzeBatchCandidates = (req: Request, res: Response) => {
+export const analyzeBatchCandidates = async (req: Request, res: Response) => {
   const { jobs, candidates } = req.body;
 
   if (!Array.isArray(jobs) || jobs.length === 0) {
@@ -188,43 +213,50 @@ export const analyzeBatchCandidates = (req: Request, res: Response) => {
     });
   }
 
-  const roleGroups = jobs.map((job: JobInput) => {
-    const rankedCandidates = candidates
-      .map((candidate: CandidateInput) => {
-        const analysis = runSingleAnalysis(
-          candidate.resumeText,
-          job.targetRole,
-          job.jobDescription
-        );
+  const roleGroups = await Promise.all(
+    jobs.map(async (job: JobInput) => {
+      const analyzedCandidates = await Promise.all(
+        candidates.map(async (candidate: CandidateInput) => {
+          const analysis = await runSingleAnalysis(
+            candidate.resumeText,
+            job.targetRole,
+            job.jobDescription,
+            candidate.githubUsername
+          );
 
-        return {
-          candidateName: candidate.candidateName,
-          targetRole: job.targetRole,
-          scoringSource: analysis.scoringSource,
-          finalScore: analysis.finalScore.finalScore,
-          recommendation: analysis.finalScore.recommendation,
-          matchedSkills:
-            "matchedSkills" in analysis.roleFitScore
-              ? analysis.roleFitScore.matchedSkills
-              : [],
-          missingSkills:
-            "missingSkills" in analysis.roleFitScore
-              ? analysis.roleFitScore.missingSkills
-              : [],
-          breakdown: analysis.finalScore.breakdown
-        };
-      })
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .map((candidate, index) => ({
-        rank: index + 1,
-        ...candidate
-      }));
+          return {
+            candidateName: candidate.candidateName,
+            targetRole: job.targetRole,
+            scoringSource: analysis.scoringSource,
+            finalScore: analysis.finalScore.finalScore,
+            recommendation: analysis.finalScore.recommendation,
+            matchedSkills:
+              "matchedSkills" in analysis.roleFitScore
+                ? analysis.roleFitScore.matchedSkills
+                : [],
+            missingSkills:
+              "missingSkills" in analysis.roleFitScore
+                ? analysis.roleFitScore.missingSkills
+                : [],
+            githubSignals: analysis.githubSignals,
+            breakdown: analysis.finalScore.breakdown
+          };
+        })
+      );
 
-    return {
-      targetRole: job.targetRole,
-      rankedCandidates
-    };
-  });
+      const rankedCandidates = analyzedCandidates
+        .sort((a, b) => b.finalScore - a.finalScore)
+        .map((candidate, index) => ({
+          rank: index + 1,
+          ...candidate
+        }));
+
+      return {
+        targetRole: job.targetRole,
+        rankedCandidates
+      };
+    })
+  );
 
   return res.status(200).json({
     message: "SkillGuard batch recruiter analysis completed",
