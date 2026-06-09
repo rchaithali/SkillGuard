@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
+import { calculateRoleFitScore } from "../services/scoringEngine.js";
 
 // Handles POST /api/analyze
 export const analyzeCandidate = (req: Request, res: Response) => {
@@ -22,11 +23,13 @@ export const analyzeCandidate = (req: Request, res: Response) => {
 
   const detectedSkills = analyzeResumeSkills(resumeText);
   const roleMatch = matchSkillsToRole(detectedSkills, targetRole);
+  const roleFitScore = calculateRoleFitScore(roleMatch);
 
   return res.status(200).json({
     message: "SkillGuard resume analysis completed",
     targetRole,
     detectedSkills,
-    roleMatch
+    roleMatch,
+    roleFitScore
   });
 };
