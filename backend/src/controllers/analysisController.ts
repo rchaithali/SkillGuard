@@ -1,8 +1,13 @@
 import type { Request, Response } from "express";
 import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
+import {
+  analyzeCodingProfileSignals,
+  type CodingProfileInput
+} from "../services/codingProfileService.js";
 import { fetchGitHubSignals } from "../services/githubService.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
 import {
+  applyCodingProfileFundamentalsProof,
   applyGitHubProjectProofBoost,
   calculateExperienceScore,
   calculateFinalScore,
@@ -19,6 +24,7 @@ type CandidateInput = {
   candidateName: string;
   resumeText: string;
   githubUsername?: string;
+  codingProfile?: CodingProfileInput;
 };
 
 type JobInput = {
@@ -31,7 +37,8 @@ const runSingleAnalysis = async (
   resumeText: string,
   targetRole: string,
   jobDescription?: string,
-  githubUsername?: string
+  githubUsername?: string,
+  codingProfile?: CodingProfileInput
 ) => {
   const detectedSkills = analyzeResumeSkills(resumeText);
 
@@ -42,6 +49,7 @@ const runSingleAnalysis = async (
   const githubSignals = githubUsername
     ? await fetchGitHubSignals(githubUsername)
     : null;
+  const codingProfileSignals = analyzeCodingProfileSignals(codingProfile);
 
   // This is the general/default role-map comparison.
   // It is useful for explanation, but when JD exists, final role fit uses JD skills.
@@ -68,7 +76,12 @@ const projectDepthScore = applyGitHubProjectProofBoost(
     jdDetectedSkills
   );
 
-  const fundamentalsScore = calculateFundamentalsScore(detectedSkills);
+const baseFundamentalsScore = calculateFundamentalsScore(detectedSkills);
+
+const fundamentalsScore = applyCodingProfileFundamentalsProof(
+  baseFundamentalsScore,
+  codingProfileSignals
+);
 
   const finalScore = calculateFinalScore(
     roleFitScore,
@@ -89,6 +102,7 @@ const projectDepthScore = applyGitHubProjectProofBoost(
     detectedSkills,
     jdDetectedSkills,
     githubSignals,
+    codingProfileSignals,
     generalRoleMatch,
     roleFitScore,
     projectDepthScore,
@@ -106,7 +120,8 @@ export const analyzeCandidate = async (req: Request, res: Response) => {
     targetRole,
     jobDescription,
     viewerType,
-    githubUsername
+    githubUsername,
+    codingProfile
   } = req.body;
 
   if (!resumeText || typeof resumeText !== "string") {
@@ -140,7 +155,8 @@ export const analyzeCandidate = async (req: Request, res: Response) => {
     resumeText,
     targetRole,
     jobDescription,
-    githubUsername
+    githubUsername,
+    codingProfile
   );
 
   const baseResponse = {
@@ -152,6 +168,7 @@ export const analyzeCandidate = async (req: Request, res: Response) => {
     detectedSkills: analysis.detectedSkills,
     jdDetectedSkills: analysis.jdDetectedSkills,
     githubSignals: analysis.githubSignals,
+    codingProfileSignals: analysis.codingProfileSignals,
 
     generalRoleMatchSource: "ROLE_MAP",
     generalRoleMatch: analysis.generalRoleMatch,
@@ -228,7 +245,8 @@ export const analyzeBatchCandidates = async (req: Request, res: Response) => {
             candidate.resumeText,
             job.targetRole,
             job.jobDescription,
-            candidate.githubUsername
+            candidate.githubUsername,
+            candidate.codingProfile
           );
 
           return {

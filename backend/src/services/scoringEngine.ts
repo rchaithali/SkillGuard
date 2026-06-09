@@ -86,6 +86,12 @@ export type GitHubProjectProofInput = {
   detectedGitHubStack: string[];
   strongRepositories: string[];
 };
+export type CodingProfileProofInput = {
+  platform: string;
+  username: string | null;
+  totalSolved: number;
+  proofLevel: "NONE" | "BASIC" | "INTERMEDIATE" | "ADVANCED";
+};
 
 // Calculates Role Fit score according to SCORING_LOGIC.txt
 export const calculateRoleFitScore = (
@@ -565,7 +571,25 @@ export const calculateFundamentalsScore = (
     reason: `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s).`
   };
 };
+export const applyCodingProfileFundamentalsProof = (
+  fundamentalsScore: FundamentalsScore,
+  codingProfileSignals?: CodingProfileProofInput | null
+): FundamentalsScore => {
+  if (!codingProfileSignals || codingProfileSignals.proofLevel === "NONE") {
+    return fundamentalsScore;
+  }
 
+  const usernameText = codingProfileSignals.username
+    ? ` (${codingProfileSignals.username})`
+    : "";
+
+  const proofReason = `Coding profile proof: ${codingProfileSignals.platform}${usernameText} shows ${codingProfileSignals.proofLevel.toLowerCase()} problem-solving evidence with ${codingProfileSignals.totalSolved} solved problem(s).`;
+
+  return {
+    ...fundamentalsScore,
+    reason: `${fundamentalsScore.reason} ${proofReason}`
+  };
+};
 // Calculates final readiness score and routing recommendation
 export const calculateFinalScore = (
   roleFitScore: { score: number },

@@ -178,7 +178,7 @@ text Level Fit                    = /7 Relevant Experience Evidence = /8 Practic
 Experience level handling:
 
 - Fresher roles: strong projects can be enough; internship/fellowship/training improves the score
-- Junior roles: projects alone are not enough; around 9–12 months or 1–3 years of real experience is treated as stronger fit
+- Junior roles: projects alone are not enough; around 9-12 months or 1-3 years of real experience is treated as stronger fit
 - Mid/Senior/Lead roles: professional years and role-relevant evidence matter more
 
 ## Fundamentals / DSA /15
