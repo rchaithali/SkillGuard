@@ -112,7 +112,6 @@ export const calculateJdRoleFitScore = (
     reason: `Matched ${matchedSkillsCount}/${totalRequiredSkills} skills required by the job description.`
   };
 };
-
 // Calculates Project Depth score based on USED and STRONG skill evidence
 export const calculateProjectDepthScore = (
   detectedSkills: DetectedSkill[]
@@ -120,24 +119,42 @@ export const calculateProjectDepthScore = (
   const maxScore = 25;
 
   const usedSkills = detectedSkills
-    .filter((skill) => skill.level === "USED")
+    .filter((skill) => skill.level === "USED" && skill.category !== "dsa")
     .map((skill) => skill.name);
 
   const strongSkills = detectedSkills
-    .filter((skill) => skill.level === "STRONG")
+    .filter((skill) => skill.level === "STRONG" && skill.category !== "dsa")
     .map((skill) => skill.name);
 
   const rawScore = usedSkills.length * 2 + strongSkills.length * 5;
   const score = Math.min(rawScore, maxScore);
 
- return {
-  score,
-  maxScore,
-  usedSkills,
-  strongSkills,
-  reason: `Found ${usedSkills.length + strongSkills.length} project/work-backed skills, including ${strongSkills.length} strong skills and ${usedSkills.length} used-only skills.`
+  const totalProjectBackedSkills = usedSkills.length + strongSkills.length;
+
+  const evidenceBreakdown = [];
+
+  if (strongSkills.length > 0) {
+    evidenceBreakdown.push(`${strongSkills.length} strong skill(s)`);
+  }
+
+  if (usedSkills.length > 0) {
+    evidenceBreakdown.push(`${usedSkills.length} used-only skill(s)`);
+  }
+
+  const reason =
+    evidenceBreakdown.length > 0
+      ? `Found ${totalProjectBackedSkills} project/work-backed skills, including ${evidenceBreakdown.join(" and ")}.`
+      : "No project/work-backed skills were detected.";
+
+  return {
+    score,
+    maxScore,
+    usedSkills,
+    strongSkills,
+    reason
+  };
 };
-};
+
 export type ExperienceLevel =
   | "FRESHER"
   | "JUNIOR"
@@ -428,5 +445,37 @@ export const calculateExperienceScore = (
     detectedRelevantSignals,
     detectedPracticalSignals,
     reason: `Experience score is ${score}/20 based on ${expectedLevel.toLowerCase()} level fit, ${detectedYears} detected year(s), ${detectedMonths} detected month(s), ${detectedRelevantSignals.length} relevant evidence signal(s), and ${detectedPracticalSignals.length} practical proof signal(s).`
+  };
+};
+export type FundamentalsScore = {
+  score: number;
+  maxScore: number;
+  detectedFundamentals: string[];
+  detectedCount: number;
+  reason: string;
+};
+
+// Calculates Fundamentals/DSA score based on distinct DSA-related signals
+export const calculateFundamentalsScore = (
+  detectedSkills: DetectedSkill[]
+): FundamentalsScore => {
+  const maxScore = 15;
+
+  // Only skills from the DSA category count toward fundamentals
+  const detectedFundamentals = detectedSkills
+    .filter((skill) => skill.category === "dsa")
+    .map((skill) => skill.name);
+
+  // Remove duplicates just in case
+  const uniqueFundamentals = [...new Set(detectedFundamentals)];
+
+  const score = Math.min(uniqueFundamentals.length * 3, maxScore);
+
+  return {
+    score,
+    maxScore,
+    detectedFundamentals: uniqueFundamentals,
+    detectedCount: uniqueFundamentals.length,
+    reason: `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s).`
   };
 };
