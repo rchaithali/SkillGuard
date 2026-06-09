@@ -47,10 +47,10 @@ The goal is to help hiring managers and engineers make faster, fairer, and expla
 ⸻
 
 6. Non-Goals (Explicitly Excluded)
-	•	No live LeetCode or GitHub scraping
-	•	No ML or LLM-based scoring
-	•	No embeddings or vector databases
-	•	No long-term storage of candidate data
+	• No unofficial scraping 
+	• GitHub public API may be used for repository signals 
+	• Candidate data is not stored by default 
+	• Authenticated users may optionally save generated reports
 
 ⸻
 
