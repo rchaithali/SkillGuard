@@ -11,6 +11,7 @@ import {
 } from "../services/codingProfileService.js";
 import { fetchGitHubSignals } from "../services/githubService.js";
 import { matchSkillsToRole } from "../services/roleMatcher.js";
+import { buildFrontendReport } from "../services/reportFormatter.js";
 import {
   applyCodingProfileFundamentalsProof,
   applyGitHubProjectProofBoost,
@@ -128,6 +129,16 @@ const runSingleAnalysis = async (
     fundamentalsScore
   );
 
+  const frontendReport = buildFrontendReport({
+    targetRole,
+    roleFitScore,
+    projectDepthScore,
+    experienceScore,
+    fundamentalsScore,
+    finalScore,
+    githubSignals
+  });
+
   return {
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
     prioritizeFundamentals,
@@ -147,6 +158,7 @@ const runSingleAnalysis = async (
     experienceScore,
     fundamentalsScore,
     finalScore,
+    frontendReport,
     improvementInsights
   };
 };
@@ -206,8 +218,10 @@ export const analyzeCandidate = async (req: Request, res: Response) => {
     scoringWeights: analysis.scoringWeights,
 
     extractedProfileLinks: analysis.extractedProfileLinks,
-    resolvedGitHubUsername: analysis.resolvedGitHubUsername,
-    resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername,
+    resolvedGitHubUsername: analysis.resolvedGitHubUsername || null,
+    resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername || null,
+
+    frontendReport: analysis.frontendReport,
 
     detectedSkills: analysis.detectedSkills,
     jdDetectedSkills: analysis.jdDetectedSkills,
@@ -301,8 +315,10 @@ export const analyzeBatchCandidates = async (req: Request, res: Response) => {
             scoringWeights: analysis.scoringWeights,
 
             extractedProfileLinks: analysis.extractedProfileLinks,
-            resolvedGitHubUsername: analysis.resolvedGitHubUsername,
-            resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername,
+            resolvedGitHubUsername: analysis.resolvedGitHubUsername || null,
+            resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername || null,
+
+            frontendReport: analysis.frontendReport,
 
             finalScore: analysis.finalScore.finalScore,
             recommendation: analysis.finalScore.recommendation,
@@ -436,14 +452,16 @@ export const analyzeCandidateFromPdf = async (req: Request, res: Response) => {
         fromPdfLinks: extractedPdfLinks
       },
       resolvedGitHubUsername:
-        resolvedPdfGitHubUsername || analysis.resolvedGitHubUsername,
+        resolvedPdfGitHubUsername || analysis.resolvedGitHubUsername || null,
       resolvedLeetCodeUsername:
-  resolvedPdfLeetCodeUsername || analysis.resolvedLeetCodeUsername || null,
+        resolvedPdfLeetCodeUsername || analysis.resolvedLeetCodeUsername || null,
 
       resumeSource: {
         type: "PDF",
         pageCount: extractedPdf.pageCount
       },
+
+      frontendReport: analysis.frontendReport,
 
       detectedSkills: analysis.detectedSkills,
       jdDetectedSkills: analysis.jdDetectedSkills,
