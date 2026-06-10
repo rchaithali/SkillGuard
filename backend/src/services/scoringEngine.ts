@@ -86,6 +86,7 @@ export type GitHubProjectProofInput = {
   detectedGitHubStack: string[];
   strongRepositories: string[];
 };
+
 export type CodingProfileProofInput = {
   platform: string;
   username: string | null;
@@ -93,11 +94,63 @@ export type CodingProfileProofInput = {
   proofLevel: "NONE" | "BASIC" | "INTERMEDIATE" | "ADVANCED";
 };
 
-// Calculates Role Fit score according to SCORING_LOGIC.txt
+export type ScoringWeights = {
+  roleFitMaxScore: number;
+  projectDepthMaxScore: number;
+  experienceMaxScore: number;
+  fundamentalsMaxScore: number;
+};
+
+export const shouldPrioritizeFundamentals = (
+  targetRole: string,
+  jobDescription?: string
+): boolean => {
+  const combinedText = `${targetRole} ${jobDescription || ""}`.toLowerCase();
+
+  const fundamentalsKeywords = [
+    "dsa",
+    "data structures",
+    "algorithms",
+    "problem solving",
+    "coding round",
+    "coding interview",
+    "competitive programming",
+    "leetcode",
+    "codechef",
+    "codeforces",
+    "c++",
+    "cpp"
+  ];
+
+  return fundamentalsKeywords.some((keyword) => combinedText.includes(keyword));
+};
+
+export const getScoringWeights = (
+  shouldUseFundamentalsPriority: boolean
+): ScoringWeights => {
+  if (shouldUseFundamentalsPriority) {
+    return {
+      roleFitMaxScore: 40,
+      projectDepthMaxScore: 25,
+      experienceMaxScore: 20,
+      fundamentalsMaxScore: 15
+    };
+  }
+
+  return {
+    roleFitMaxScore: 45,
+    projectDepthMaxScore: 30,
+    experienceMaxScore: 20,
+    fundamentalsMaxScore: 5
+  };
+};
+
+// Calculates Role Fit score according to role map
 export const calculateRoleFitScore = (
-  roleMatch: RoleMatchResult
+  roleMatch: RoleMatchResult,
+  scoringWeights?: ScoringWeights
 ): RoleFitScore => {
-  const maxScore = 40;
+  const maxScore = scoringWeights?.roleFitMaxScore || 40;
 
   const matchedSkillsCount =
     roleMatch.matchedCoreSkills.length + roleMatch.matchedSecondarySkills.length;
@@ -130,9 +183,10 @@ export const calculateRoleFitScore = (
 // Calculates Role Fit score using JD skills when job description is provided
 export const calculateJdRoleFitScore = (
   detectedSkills: DetectedSkill[],
-  jdDetectedSkills: DetectedSkill[]
+  jdDetectedSkills: DetectedSkill[],
+  scoringWeights?: ScoringWeights
 ): JdRoleFitScore => {
-  const maxScore = 40;
+  const maxScore = scoringWeights?.roleFitMaxScore || 40;
 
   const candidateSkillNames = detectedSkills.map((skill) => skill.name);
   const jdRequiredSkillNames = jdDetectedSkills.map((skill) => skill.name);
@@ -182,9 +236,10 @@ export const calculateJdRoleFitScore = (
 
 // Calculates Project Depth score based on USED and STRONG skill evidence
 export const calculateProjectDepthScore = (
-  detectedSkills: DetectedSkill[]
+  detectedSkills: DetectedSkill[],
+  scoringWeights?: ScoringWeights
 ): ProjectDepthScore => {
-  const maxScore = 25;
+  const maxScore = scoringWeights?.projectDepthMaxScore || 25;
 
   const usedSkills = detectedSkills
     .filter((skill) => skill.level === "USED" && skill.category !== "dsa")
@@ -257,7 +312,6 @@ export const applyGitHubProjectProofBoost = (
     boost += 1;
   }
 
-  // GitHub is only supporting proof, so keep the boost small.
   const cappedBoost = Math.min(boost, 4);
 
   if (cappedBoost === 0) {
@@ -551,9 +605,10 @@ export const calculateExperienceScore = (
 
 // Calculates Fundamentals/DSA score based on distinct DSA-related signals
 export const calculateFundamentalsScore = (
-  detectedSkills: DetectedSkill[]
+  detectedSkills: DetectedSkill[],
+  scoringWeights?: ScoringWeights
 ): FundamentalsScore => {
-  const maxScore = 15;
+  const maxScore = scoringWeights?.fundamentalsMaxScore || 15;
 
   const detectedFundamentals = detectedSkills
     .filter((skill) => skill.category === "dsa")
@@ -561,16 +616,23 @@ export const calculateFundamentalsScore = (
 
   const uniqueFundamentals = [...new Set(detectedFundamentals)];
 
-  const score = Math.min(uniqueFundamentals.length * 3, maxScore);
+  const pointsPerSignal = maxScore === 5 ? 1 : 3;
+  const score = Math.min(uniqueFundamentals.length * pointsPerSignal, maxScore);
+
+  const reason =
+    maxScore === 5
+      ? `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s). Fundamentals were lightly weighted because the role/JD did not explicitly prioritize DSA.`
+      : `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s). Fundamentals were strongly weighted because the role/JD explicitly mentioned DSA, algorithms, coding rounds, C++, or problem solving.`;
 
   return {
     score,
     maxScore,
     detectedFundamentals: uniqueFundamentals,
     detectedCount: uniqueFundamentals.length,
-    reason: `Detected ${uniqueFundamentals.length} distinct DSA/fundamentals signal(s).`
+    reason
   };
 };
+
 export const applyCodingProfileFundamentalsProof = (
   fundamentalsScore: FundamentalsScore,
   codingProfileSignals?: CodingProfileProofInput | null
@@ -590,6 +652,7 @@ export const applyCodingProfileFundamentalsProof = (
     reason: `${fundamentalsScore.reason} ${proofReason}`
   };
 };
+
 // Calculates final readiness score and routing recommendation
 export const calculateFinalScore = (
   roleFitScore: { score: number },
@@ -660,9 +723,9 @@ export const generateImprovementInsights = (
   const strengths: string[] = [];
   const recommendations: string[] = [];
 
-  if (roleFitScore.score >= 30) {
+  if (roleFitScore.score >= roleFitScore.maxScore * 0.75) {
     strengths.push("Strong alignment with the required role skills.");
-  } else if (roleFitScore.score >= 20) {
+  } else if (roleFitScore.score >= roleFitScore.maxScore * 0.5) {
     strengths.push("Moderate alignment with the required role skills.");
   } else {
     recommendations.push(
@@ -682,9 +745,9 @@ export const generateImprovementInsights = (
     );
   }
 
-  if (projectDepthScore.score >= 20) {
+  if (projectDepthScore.score >= projectDepthScore.maxScore * 0.8) {
     strengths.push("Strong project/work-backed engineering evidence.");
-  } else if (projectDepthScore.score >= 10) {
+  } else if (projectDepthScore.score >= projectDepthScore.maxScore * 0.4) {
     strengths.push("Some practical project/work evidence is present.");
     recommendations.push(
       "Add more project details showing implementation depth, ownership, and real technical decisions."
@@ -709,7 +772,13 @@ export const generateImprovementInsights = (
     );
   }
 
-  if (fundamentalsScore.score >= 12) {
+  if (fundamentalsScore.maxScore === 5) {
+    if (fundamentalsScore.score > 0) {
+      strengths.push(
+        "Some DSA/fundamentals evidence is present as an additional signal."
+      );
+    }
+  } else if (fundamentalsScore.score >= 12) {
     strengths.push("Strong DSA/fundamentals signals detected.");
   } else if (fundamentalsScore.score >= 6) {
     recommendations.push(
@@ -717,7 +786,7 @@ export const generateImprovementInsights = (
     );
   } else {
     recommendations.push(
-      "Add clear DSA/fundamentals evidence if the role expects coding rounds."
+      "Add clear DSA/fundamentals evidence because this role appears to expect coding/problem-solving strength."
     );
   }
 

@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
 import { analyzeResumeSkills } from "../services/resumeAnalyzer.js";
+import { extractResumeTextFromPdf } from "../services/pdfResumeService.js";
+import {
+  extractProfileLinksFromPdfBuffer,
+  extractProfileLinksFromText
+} from "../services/profileLinkExtractor.js";
 import {
   analyzeCodingProfileSignals,
   type CodingProfileInput
@@ -15,7 +20,9 @@ import {
   calculateJdRoleFitScore,
   calculateProjectDepthScore,
   calculateRoleFitScore,
-  generateImprovementInsights
+  generateImprovementInsights,
+  getScoringWeights,
+  shouldPrioritizeFundamentals
 } from "../services/scoringEngine.js";
 
 type ViewerType = "RECRUITER" | "CANDIDATE";
@@ -42,31 +49,52 @@ const runSingleAnalysis = async (
 ) => {
   const detectedSkills = analyzeResumeSkills(resumeText);
 
+  const extractedProfileLinks = extractProfileLinksFromText(resumeText);
+
+  const resolvedGitHubUsername =
+    githubUsername || extractedProfileLinks.githubUsername || undefined;
+
+  const resolvedLeetCodeUsername =
+    extractedProfileLinks.leetCodeUsername || undefined;
+
   const jdDetectedSkills = jobDescription
     ? analyzeResumeSkills(jobDescription)
     : [];
 
-  const githubSignals = githubUsername
-    ? await fetchGitHubSignals(githubUsername)
+  const prioritizeFundamentals = shouldPrioritizeFundamentals(
+    targetRole,
+    jobDescription
+  );
+
+  const scoringWeights = getScoringWeights(prioritizeFundamentals);
+
+  const githubSignals = resolvedGitHubUsername
+    ? await fetchGitHubSignals(resolvedGitHubUsername)
     : null;
+
   const codingProfileSignals = analyzeCodingProfileSignals(codingProfile);
 
-  // This is the general/default role-map comparison.
-  // It is useful for explanation, but when JD exists, final role fit uses JD skills.
   const generalRoleMatch = matchSkillsToRole(detectedSkills, targetRole);
 
   const roleFitScore =
     jdDetectedSkills.length > 0
-      ? calculateJdRoleFitScore(detectedSkills, jdDetectedSkills)
-      : calculateRoleFitScore(generalRoleMatch);
+      ? calculateJdRoleFitScore(
+          detectedSkills,
+          jdDetectedSkills,
+          scoringWeights
+        )
+      : calculateRoleFitScore(generalRoleMatch, scoringWeights);
 
-const baseProjectDepthScore = calculateProjectDepthScore(detectedSkills);
+  const baseProjectDepthScore = calculateProjectDepthScore(
+    detectedSkills,
+    scoringWeights
+  );
 
-const projectDepthScore = applyGitHubProjectProofBoost(
-  baseProjectDepthScore,
-  detectedSkills,
-  githubSignals?.githubProjectSignals
-);
+  const projectDepthScore = applyGitHubProjectProofBoost(
+    baseProjectDepthScore,
+    detectedSkills,
+    githubSignals?.githubProjectSignals
+  );
 
   const experienceScore = calculateExperienceScore(
     resumeText,
@@ -76,12 +104,15 @@ const projectDepthScore = applyGitHubProjectProofBoost(
     jdDetectedSkills
   );
 
-const baseFundamentalsScore = calculateFundamentalsScore(detectedSkills);
+  const baseFundamentalsScore = calculateFundamentalsScore(
+    detectedSkills,
+    scoringWeights
+  );
 
-const fundamentalsScore = applyCodingProfileFundamentalsProof(
-  baseFundamentalsScore,
-  codingProfileSignals
-);
+  const fundamentalsScore = applyCodingProfileFundamentalsProof(
+    baseFundamentalsScore,
+    codingProfileSignals
+  );
 
   const finalScore = calculateFinalScore(
     roleFitScore,
@@ -99,6 +130,13 @@ const fundamentalsScore = applyCodingProfileFundamentalsProof(
 
   return {
     scoringSource: jdDetectedSkills.length > 0 ? "JOB_DESCRIPTION" : "ROLE_MAP",
+    prioritizeFundamentals,
+    scoringWeights,
+
+    extractedProfileLinks,
+    resolvedGitHubUsername,
+    resolvedLeetCodeUsername,
+
     detectedSkills,
     jdDetectedSkills,
     githubSignals,
@@ -164,6 +202,12 @@ export const analyzeCandidate = async (req: Request, res: Response) => {
     viewerType: normalizedViewerType,
     targetRole,
     scoringSource: analysis.scoringSource,
+    prioritizeFundamentals: analysis.prioritizeFundamentals,
+    scoringWeights: analysis.scoringWeights,
+
+    extractedProfileLinks: analysis.extractedProfileLinks,
+    resolvedGitHubUsername: analysis.resolvedGitHubUsername,
+    resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername,
 
     detectedSkills: analysis.detectedSkills,
     jdDetectedSkills: analysis.jdDetectedSkills,
@@ -253,6 +297,13 @@ export const analyzeBatchCandidates = async (req: Request, res: Response) => {
             candidateName: candidate.candidateName,
             targetRole: job.targetRole,
             scoringSource: analysis.scoringSource,
+            prioritizeFundamentals: analysis.prioritizeFundamentals,
+            scoringWeights: analysis.scoringWeights,
+
+            extractedProfileLinks: analysis.extractedProfileLinks,
+            resolvedGitHubUsername: analysis.resolvedGitHubUsername,
+            resolvedLeetCodeUsername: analysis.resolvedLeetCodeUsername,
+
             finalScore: analysis.finalScore.finalScore,
             recommendation: analysis.finalScore.recommendation,
             matchedSkills:
@@ -264,6 +315,7 @@ export const analyzeBatchCandidates = async (req: Request, res: Response) => {
                 ? analysis.roleFitScore.missingSkills
                 : [],
             githubSignals: analysis.githubSignals,
+            codingProfileSignals: analysis.codingProfileSignals,
             breakdown: analysis.finalScore.breakdown
           };
         })
@@ -288,4 +340,140 @@ export const analyzeBatchCandidates = async (req: Request, res: Response) => {
     mode: "MULTI_ROLE_CANDIDATE_RANKING",
     roleGroups
   });
+};
+
+// Handles POST /api/analyze/pdf
+export const analyzeCandidateFromPdf = async (req: Request, res: Response) => {
+  try {
+    const uploadedFile = req.file;
+
+    if (!uploadedFile) {
+      return res.status(400).json({
+        message: "Resume PDF file is required"
+      });
+    }
+
+    const {
+      targetRole,
+      jobDescription,
+      viewerType,
+      githubUsername,
+      codingProfile
+    } = req.body;
+
+    if (!targetRole || typeof targetRole !== "string") {
+      return res.status(400).json({
+        message: "Target role is required and must be a string"
+      });
+    }
+
+    if (jobDescription && typeof jobDescription !== "string") {
+      return res.status(400).json({
+        message: "Job description must be a string when provided"
+      });
+    }
+
+    if (githubUsername && typeof githubUsername !== "string") {
+      return res.status(400).json({
+        message: "GitHub username must be a string when provided"
+      });
+    }
+
+    const extractedPdf = await extractResumeTextFromPdf(uploadedFile.buffer);
+    const extractedPdfLinks = extractProfileLinksFromPdfBuffer(
+      uploadedFile.buffer
+    );
+
+    if (!extractedPdf.resumeText) {
+      return res.status(400).json({
+        message: "Could not extract readable text from the PDF"
+      });
+    }
+
+    let parsedCodingProfile: CodingProfileInput | undefined;
+
+    if (codingProfile) {
+      if (typeof codingProfile === "string") {
+        try {
+          parsedCodingProfile = JSON.parse(codingProfile);
+        } catch {
+          return res.status(400).json({
+            message: "Coding profile must be valid JSON when provided"
+          });
+        }
+      } else {
+        parsedCodingProfile = codingProfile;
+      }
+    }
+
+    const normalizedViewerType: ViewerType =
+      viewerType === "CANDIDATE" ? "CANDIDATE" : "RECRUITER";
+
+    const resolvedPdfGitHubUsername =
+      githubUsername || extractedPdfLinks.githubUsername || undefined;
+
+    const resolvedPdfLeetCodeUsername =
+      extractedPdfLinks.leetCodeUsername || undefined;
+
+    const analysis = await runSingleAnalysis(
+      extractedPdf.resumeText,
+      targetRole,
+      jobDescription,
+      resolvedPdfGitHubUsername,
+      parsedCodingProfile
+    );
+
+    const baseResponse = {
+      message: "SkillGuard PDF resume analysis completed",
+      viewerType: normalizedViewerType,
+      targetRole,
+      scoringSource: analysis.scoringSource,
+      prioritizeFundamentals: analysis.prioritizeFundamentals,
+      scoringWeights: analysis.scoringWeights,
+
+      extractedProfileLinks: {
+        fromVisibleText: analysis.extractedProfileLinks,
+        fromPdfLinks: extractedPdfLinks
+      },
+      resolvedGitHubUsername:
+        resolvedPdfGitHubUsername || analysis.resolvedGitHubUsername,
+      resolvedLeetCodeUsername:
+  resolvedPdfLeetCodeUsername || analysis.resolvedLeetCodeUsername || null,
+
+      resumeSource: {
+        type: "PDF",
+        pageCount: extractedPdf.pageCount
+      },
+
+      detectedSkills: analysis.detectedSkills,
+      jdDetectedSkills: analysis.jdDetectedSkills,
+      githubSignals: analysis.githubSignals,
+      codingProfileSignals: analysis.codingProfileSignals,
+
+      generalRoleMatchSource: "ROLE_MAP",
+      generalRoleMatch: analysis.generalRoleMatch,
+
+      roleFitScore: analysis.roleFitScore,
+      projectDepthScore: analysis.projectDepthScore,
+      experienceScore: analysis.experienceScore,
+      fundamentalsScore: analysis.fundamentalsScore,
+      finalScore: analysis.finalScore
+    };
+
+    if (normalizedViewerType === "CANDIDATE") {
+      return res.status(200).json({
+        ...baseResponse,
+        improvementInsights: analysis.improvementInsights
+      });
+    }
+
+    return res.status(200).json({
+      ...baseResponse,
+      candidateFeedbackAvailable: true
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to analyze resume PDF"
+    });
+  }
 };

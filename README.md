@@ -4,9 +4,9 @@ SkillGuard is an explainable candidate evaluation system that analyzes resume ev
 
 ## Problem
 
-Referral-stage and early hiring screening can become noisy when recruiters receive many resumes for one or more open roles. Manual review is time-consuming, and keyword-only matching often misses the difference between skills that are merely listed and skills that are actually demonstrated through projects or work experience.
+Referral-stage and early hiring screening can become noisy when recruiters receive many resumes for one or more open roles. Manual review is time-consuming, and keyword-only matching often misses the difference between skills that are merely listed and skills that are actually demonstrated through projects, work experience, or public code.
 
-SkillGuard reduces this screening effort by producing structured, explainable role-readiness signals based on resume evidence, job-description alignment, project depth, experience fit, fundamentals, and optional GitHub project proof.
+SkillGuard reduces this screening effort by producing structured, explainable role-readiness signals based on resume evidence, job-description alignment, project depth, experience fit, fundamentals, optional GitHub project proof, and optional coding profile proof.
 
 ## Why Rule-Based Logic
 
@@ -27,9 +27,28 @@ The trade-off is lower sophistication than a trained ML model, but the system re
 - Target role
 - Optional job description
 - Optional GitHub username
+- Optional coding profile data
 - Viewer type:
   - RECRUITER
   - CANDIDATE
+
+### PDF Resume Analysis
+
+- Resume PDF upload
+- Target role
+- Optional job description
+- Optional GitHub username
+- Optional coding profile data
+- Viewer type:
+  - RECRUITER
+  - CANDIDATE
+
+SkillGuard supports PDF resume upload with:
+
+- Visible resume text extraction
+- Hidden/clickable GitHub profile link detection from PDF links
+- Automatic GitHub username resolution when a GitHub link is found
+- GitHub project proof analysis using public repositories
 
 ### Batch Recruiter Analysis
 
@@ -47,18 +66,35 @@ This allows SkillGuard to rank candidates for one role or group and rank candida
 - Detected skills from resume
 - Job-description skill extraction
 - General role-map comparison
+- Extracted profile links
+- Resolved GitHub username
 - Optional GitHub project proof signals
 - Optional coding profile data
-- Role Fit score /40
-- Project Depth score /25
-- Experience score /20
-- Fundamentals / DSA score /15
+- Dynamic scoring weights
+- Role Fit score
+- Project Depth score
+- Experience score
+- Fundamentals / DSA score
 - Final readiness score /100
 - Interview routing recommendation:
   - DIRECT_INTERVIEW
   - PHONE_SCREEN
   - ASSESSMENT
   - NOT_READY
+
+### PDF Candidate Output
+
+The PDF endpoint returns all single-candidate analysis fields plus:
+
+- Resume source type
+- PDF page count
+- Profile links extracted from visible text
+- Profile links extracted from hidden PDF links
+- Automatically resolved GitHub username when available
+
+Example:
+
+json {   "resumeSource": {     "type": "PDF",     "pageCount": 1   },   "extractedProfileLinks": {     "fromVisibleText": {       "githubUsername": null,       "githubUrl": null,       "leetCodeUsername": null,       "leetCodeUrl": null     },     "fromPdfLinks": {       "githubUsername": "sampleuser",       "githubUrl": "https://github.com/sampleuser",       "leetCodeUsername": null,       "leetCodeUrl": null     }   },   "resolvedGitHubUsername": "sampleuser" } 
 
 ### Viewer-Specific Output
 
@@ -78,19 +114,29 @@ For candidate view:
 
 ## Scoring Breakdown
 
-text Final Score = Role Fit + Project Depth + Experience + Fundamentals  Role Fit        = /40 Project Depth   = /25 Experience      = /20 Fundamentals    = /15 Total           = /100 
+SkillGuard uses dynamic scoring weights depending on whether the role or job description explicitly prioritizes fundamentals, DSA, algorithms, coding rounds, C++, or problem-solving.
 
-## Role Fit /40
+### When Fundamentals / DSA Are Prioritized
+
+text Final Score = Role Fit + Project Depth + Experience + Fundamentals  Role Fit      = /40 Project Depth = /25 Experience    = /20 Fundamentals  = /15 Total         = /100 
+
+### When Fundamentals / DSA Are Not Explicitly Prioritized
+
+text Final Score = Role Fit + Project Depth + Experience + Fundamentals  Role Fit      = /45 Project Depth = /30 Experience    = /20 Fundamentals  = /5 Total         = /100 
+
+This prevents candidates from being heavily penalized for DSA when the role is primarily project, backend, frontend, or stack-focused.
+
+## Role Fit
 
 If a job description is provided, SkillGuard scores the candidate against the skills extracted from the job description.
 
 If no job description is provided, SkillGuard falls back to the default role map.
 
-text JD present: Role Fit = matched JD skills / total JD skills * 40  JD absent: Role Fit = matched role-map skills / total role-map skills * 40 
+text JD present: Role Fit = matched JD skills / total JD skills * roleFitMaxScore  JD absent: Role Fit = matched role-map skills / total role-map skills * roleFitMaxScore 
 
 The system also keeps a separate generalRoleMatch field to show the default role-map comparison clearly.
 
-## Project Depth /25
+## Project Depth
 
 Project Depth measures whether skills are backed by project or work evidence.
 
@@ -102,13 +148,16 @@ Skill confidence levels:
 
 Scoring:
 
-text USED skill   = +2 STRONG skill = +5 Maximum      = 25 
+text USED skill   = +2 STRONG skill = +5 Maximum      = projectDepthMaxScore 
 
 DSA skills are excluded from Project Depth because they are scored separately under Fundamentals.
 
 ## GitHub Project Proof Signals
 
-SkillGuard supports optional GitHub public profile analysis through githubUsername.
+SkillGuard supports GitHub public profile analysis through either:
+
+- Manually provided githubUsername
+- Automatically extracted GitHub link from resume PDF hidden/clickable links
 
 GitHub is used as supporting project evidence, not as a replacement for resume or job-description matching.
 
@@ -157,7 +206,7 @@ Boost is based on:
 
 Example output:
 
-text GitHub added a +3 project-proof boost: GitHub confirmed Express.js, MongoDB in public project repositories; 2 strong GitHub project repo(s) were found. 
+text GitHub added a +4 project-proof boost: GitHub confirmed TypeScript, React, Express.js, MongoDB, JWT, Bcrypt in public project repositories; 2 strong GitHub project repo(s) were found. 
 
 ### Safe Fallback
 
@@ -167,7 +216,7 @@ json {   "githubSignals": null }
 
 The main resume/JD analysis still works normally.
 
-## Experience /20
+## Experience
 
 Experience is scored using:
 
@@ -175,7 +224,7 @@ text Experience Score = Level Fit + Relevant Experience Evidence + Practical Pro
 
 Breakdown:
 
-text Level Fit                    = /7 Relevant Experience Evidence = /8 Practical Proof              = /5 
+text Level Fit                    = /7 Relevant Experience Evidence = /8 Practical Proof              = /5 Total                        = /20 
 
 Experience level handling:
 
@@ -183,7 +232,7 @@ Experience level handling:
 - Junior roles: projects alone are not enough; around 9-12 months or 1-3 years of real experience is treated as stronger fit
 - Mid/Senior/Lead roles: professional years and role-relevant evidence matter more
 
-## Fundamentals / DSA /15
+## Fundamentals / DSA
 
 Fundamentals are scored using distinct DSA and CS signals such as:
 
@@ -199,9 +248,15 @@ Fundamentals are scored using distinct DSA and CS signals such as:
 - Sliding Window
 - Two Pointers
 
-Scoring:
+When the role or JD explicitly asks for DSA, algorithms, C++, coding rounds, competitive programming, LeetCode, CodeChef, Codeforces, or problem-solving:
 
 text Each distinct DSA/fundamentals signal = +3 Maximum = 15 
+
+When the role or JD does not explicitly prioritize fundamentals:
+
+text Each distinct DSA/fundamentals signal = +1 Maximum = 5 
+
+This treats DSA as an additional signal instead of a major penalty for stack-focused roles.
 
 ## Coding Profile / DSA Proof Signals
 
@@ -285,6 +340,7 @@ Output:
 - Matched skills
 - Missing skills
 - GitHub proof signals when available
+- Coding profile proof signals when available
 - Score breakdown
 
 ### Multiple Roles, Multiple Candidates
@@ -306,6 +362,14 @@ This supports referral-style screening where recruiters may need to identify the
 
 http POST /api/analyze 
 
+### PDF Resume Analysis
+
+http POST /api/analyze/pdf 
+
+Expected form-data fields:
+
+text resumeFile      File    Resume PDF targetRole      Text    Target role name jobDescription  Text    Optional job description viewerType      Text    RECRUITER or CANDIDATE githubUsername  Text    Optional GitHub username codingProfile   Text    Optional JSON string 
+
 ### Batch Recruiter Analysis
 
 http POST /api/analyze/batch 
@@ -315,6 +379,8 @@ http POST /api/analyze/batch
 - Node.js
 - TypeScript
 - Express.js
+- Multer
+- PDF parsing
 - GitHub public API integration
 - Rule-based scoring logic
 - Modular backend architecture
@@ -324,4 +390,6 @@ http POST /api/analyze/batch
 - Cleaner report structure for frontend display
 - MongoDB-based saved reports/history
 - React + Tailwind frontend dashboard
+- LeetCode/coding profile link extraction display
+- Optional coding profile stat fetching
 - Deployment and screenshots
