@@ -387,7 +387,7 @@ http POST /api/analyze/batch
 
 ## Planned Improvements
 
-- Cleaner report structure for frontend display
+- Cleaner report structure for frontend display(done)
 - MongoDB-based saved reports/history
 - React + Tailwind frontend dashboard
 - LeetCode/coding profile link extraction display
