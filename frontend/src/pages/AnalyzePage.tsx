@@ -6,52 +6,10 @@ import ReportSummary from "../components/ReportSummary.js";
 import ScoreCard from "../components/ScoreCard.js";
 import SkillMatchSection from "../components/SkillMatchSection.js";
 import StrengthConcernSection from "../components/StrengthConcernSection.js";
-
-type ScoreCardData = {
-  label: string;
-  score: number;
-  maxScore: number;
-  percentage: number;
-  status: "STRONG" | "MODERATE" | "LOW";
-  reason: string;
-};
-
-type FrontendReport = {
-  targetRole: string;
-  finalScore: number;
-  maxScore: number;
-  recommendation: string;
-  recommendationLabel: string;
-  readinessLabel: string;
-  scoreCards: ScoreCardData[];
-  topStrengths: string[];
-  mainConcerns: string[];
-  proofSignals: {
-    githubVerified: boolean;
-    githubUsername: string | null;
-    hasRecentGitHubActivity: boolean;
-    hasBackendGitHubSignals: boolean;
-    hasFrontendGitHubSignals: boolean;
-    detectedGitHubStack: string[];
-    strongRepositories: string[];
-  };
-};
-
-type AnalysisResponse = {
-  message: string;
-  targetRole: string;
-  scoringSource: string;
-  prioritizeFundamentals: boolean;
-  resolvedGitHubUsername: string | null;
-  resolvedLeetCodeUsername: string | null;
-  roleFitScore?: {
-    matchedSkills?: string[];
-    missingSkills?: string[];
-  };
-  frontendReport: FrontendReport;
-};
-
-const API_BASE_URL = "http://localhost:5050";
+import {
+  analyzeResumePdf,
+  type AnalysisResponse
+} from "../services/analysisApi.js";
 
 function AnalyzePage() {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -66,7 +24,7 @@ function AnalyzePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Sends PDF + role inputs to backend and stores returned report.
+  // Handles form submit and stores the backend analysis result.
   const handleAnalyzeResume = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -80,22 +38,11 @@ function AnalyzePage() {
     setAnalysisResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("resumeFile", resumeFile);
-      formData.append("targetRole", targetRole);
-      formData.append("jobDescription", jobDescription);
-      formData.append("viewerType", "RECRUITER");
-
-      const response = await fetch(`${API_BASE_URL}/api/analyze/pdf`, {
-        method: "POST",
-        body: formData
+      const data = await analyzeResumePdf({
+        resumeFile,
+        targetRole,
+        jobDescription
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Resume analysis failed.");
-      }
 
       setAnalysisResult(data);
     } catch (error) {
